@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin — BlockLib</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="logo">⛓ BlockLib</div>
+    <div>
+      <a href="dashboard.html">← Dashboard</a>
+    </div>
+    <span class="address-badge admin-badge">🔑 Admin</span>
+  </nav>
+  <div class="main-layout">
+    <div class="page-header">
+      <h1 class="section-title">Admin Panel</h1>
+      <p class="section-sub">Add new books to the blockchain library.</p>
+    </div>
+
+    <div id="alertBox" style="display:none"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+      <!-- Add Book Form -->
+      <div class="card">
+        <h3 style="margin-bottom:20px">Add New Book</h3>
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="bookTitle" placeholder="e.g. The Great Gatsby">
+        </div>
+        <div class="form-group">
+          <label>Author</label>
+          <input type="text" id="bookAuthor" placeholder="e.g. F. Scott Fitzgerald">
+        </div>
+        <div class="form-group">
+          <label>Genre</label>
+          <select id="bookGenre">
+            <option>Fiction</option><option>Non-Fiction</option><option>Science</option>
+            <option>Technology</option><option>History</option><option>Philosophy</option>
+            <option>Biography</option><option>Mystery</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Number of Copies</label>
+          <input type="number" id="bookCopies" value="3" min="1">
+        </div>
+        <button class="btn btn-primary" onclick="doAddBook()" style="width:100%;padding:12px">
+          Add to Blockchain
+        </button>
+      </div>
+
+      <!-- Current catalog -->
+      <div class="card">
+        <h3 style="margin-bottom:20px">Current Catalog</h3>
+        <div id="adminBookList" style="color:#999;font-size:14px">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Transaction log -->
+    <div class="card" style="margin-top:32px">
+      <h3 style="margin-bottom:16px">Transaction Log</h3>
+      <div id="txLog" style="font-family:monospace;font-size:12px;color:#7c6ff7;max-height:200px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    function showAlert(msg, type) {
+      const box = document.getElementById('alertBox');
+      box.className = `alert alert-${type}`;
+      box.textContent = msg;
+      box.style.display = 'block';
+      setTimeout(() => box.style.display = 'none', 5000);
+    }
+
+    function addTxLog(hash, action) {
+      const log = document.getElementById('txLog');
+      const entry = document.createElement('div');
+      entry.style.marginBottom = '6px';
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${action} → ${hash}`;
+      log.prepend(entry);
+    }
+
+    async function doAddBook() {
+      const title = document.getElementById('bookTitle').value.trim();
+      const author = document.getElementById('bookAuthor').value.trim();
+      const genre = document.getElementById('bookGenre').value;
+      const copies = parseInt(document.getElementById('bookCopies').value);
+
+      if (!title || !author) { showAlert('Please fill in all fields.', 'error'); return; }
+
+      try {
+        showAlert('⏳ Confirm transaction in MetaMask...', 'success');
+        const hash = await addBook(title, author, genre, copies);
+        showAlert(`✓ Book added! Tx: ${hash}`, 'success');
+        addTxLog(hash, `Added "${title}"`);
+        document.getElementById('bookTitle').value = '';
+        document.getElementById('bookAuthor').value = '';
+        await loadAdminCatalog();
+      } catch (e) {
+        showAlert('✗ ' + (e.reason || e.message), 'error');
+      }
+    }
+
+    async function loadAdminCatalog() {
+      const books = await getAllBooks();
+      document.getElementById('adminBookList').innerHTML = books.length === 0
+        ? 'No books yet.'
+        : books.map(b => `
+          <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.07)">
+            <strong>${b.title}</strong> <span style="color:#999;font-size:12px">by ${b.author}</span><br>
+            <span style="color:#7c6ff7;font-size:12px">${b.genre} · ${b.availableCopies}/${b.totalCopies} available</span>
+          </div>`).join('');
+    }
+
+    window.addEventListener('load', async () => {
+      const { isAdminUser } = await initWeb3();
+      if (!isAdminUser) {
+        alert("Access denied. Admin only.");
+        window.location.href = "dashboard.html";
+        return;
+      }
+      await loadAdminCatalog();
+    });
+  </script>
+</body>
+</html>

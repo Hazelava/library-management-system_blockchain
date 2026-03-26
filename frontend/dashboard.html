@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard — BlockLib</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="logo">⛓ BlockLib</div>
+    <div>
+      <a href="index.html">Home</a>
+      <span id="navAdminLink" style="display:none"><a href="admin.html">Admin Panel</a></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="address-badge" id="navAddress"></span>
+      <button class="btn btn-outline" onclick="logout()" style="padding:8px 16px;font-size:13px">Disconnect</button>
+    </div>
+  </nav>
+
+  <div class="main-layout">
+    <div class="page-header">
+      <h1 class="section-title">Library Dashboard</h1>
+      <p class="section-sub">Browse books and manage your borrowings on-chain.</p>
+    </div>
+
+    <div id="alertBox" style="display:none"></div>
+
+    <!-- Stats -->
+    <div class="stats-row" id="statsRow">
+      <div class="card stat-card"><div class="stat-num" id="statTotal">—</div><div class="stat-label">Total Books</div></div>
+      <div class="card stat-card"><div class="stat-num" id="statAvail">—</div><div class="stat-label">Available</div></div>
+      <div class="card stat-card"><div class="stat-num" id="statBorrowed">—</div><div class="stat-label">My Borrows</div></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active" onclick="showTab('catalog')">📚 Book Catalog</div>
+      <div class="tab" onclick="showTab('history')">📜 My History</div>
+    </div>
+
+    <!-- Catalog -->
+    <div id="tabCatalog">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <input type="text" id="searchInput" placeholder="Search by title, author..." oninput="filterBooks()"
+            style="padding:10px 16px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#e0e0f0;font-size:14px;width:300px">
+        </div>
+        <button class="btn btn-primary" onclick="loadBooks()">↻ Refresh</button>
+      </div>
+      <div id="booksLoading" style="text-align:center;padding:60px;color:#999">Loading from blockchain...</div>
+      <div class="books-grid" id="booksGrid" style="display:none"></div>
+    </div>
+
+    <!-- History -->
+    <div id="tabHistory" style="display:none">
+      <div class="card">
+        <h3 style="margin-bottom:16px">My Borrow History</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Book ID</th><th>Borrowed On</th><th>Returned On</th><th>Status</th></tr></thead>
+            <tbody id="historyBody"><tr><td colspan="4" style="color:#999;text-align:center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  <script src="app.js"></script>
+  <script>
+    let allBooks = [];
+
+    function showTab(name) {
+      document.getElementById('tabCatalog').style.display = name === 'catalog' ? 'block' : 'none';
+      document.getElementById('tabHistory').style.display = name === 'history' ? 'block' : 'none';
+      document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', (name === 'catalog') ? i === 0 : i === 1));
+      if (name === 'history') loadHistory();
+    }
+
+    function showAlert(msg, type) {
+      const box = document.getElementById('alertBox');
+      box.className = `alert alert-${type}`;
+      box.textContent = msg;
+      box.style.display = 'block';
+      setTimeout(() => box.style.display = 'none', 5000);
+    }
+
+    async function loadBooks() {
+      document.getElementById('booksLoading').style.display = 'block';
+      document.getElementById('booksGrid').style.display = 'none';
+      allBooks = await getAllBooks();
+      renderBooks(allBooks);
+      document.getElementById('statTotal').textContent = allBooks.length;
+      document.getElementById('statAvail').textContent = allBooks.filter(b => b.availableCopies > 0).length;
+    }
+
+    function renderBooks(books) {
+      const grid = document.getElementById('booksGrid');
+      grid.innerHTML = books.map(b => `
+        <div class="card book-card">
+          <span class="book-badge ${b.availableCopies > 0 ? 'badge-available' : 'badge-unavailable'}">
+            ${b.availableCopies > 0 ? 'Available' : 'Out of stock'}
+          </span>
+          <div class="book-title">${b.title}</div>
+          <div class="book-author">by ${b.author}</div>
+          <span class="book-genre">${b.genre}</span>
+          <div class="book-copies">📗 ${b.availableCopies} / ${b.totalCopies} copies left</div>
+          <button class="btn ${b.availableCopies > 0 ? 'btn-success' : 'btn-outline'}"
+            onclick="doBorrow(${b.id})"
+            ${b.availableCopies === 0 ? 'disabled' : ''}
+            style="width:100%;margin-bottom:8px">
+            Borrow
+          </button>
+          <button class="btn btn-danger" onclick="doReturn(${b.id})" style="width:100%">
+            Return
+          </button>
+        </div>`).join('');
+      document.getElementById('booksLoading').style.display = 'none';
+      document.getElementById('booksGrid').style.display = 'grid';
+    }
+
+    function filterBooks() {
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = allBooks.filter(b =>
+        b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q) || b.genre.toLowerCase().includes(q)
+      );
+      renderBooks(filtered);
+    }
+
+    async function doBorrow(id) {
+      try {
+        showAlert('⏳ Confirm in MetaMask...', 'success');
+        const hash = await borrowBook(id);
+        showAlert(`✓ Borrowed! Tx: ${shortHash(hash)}`, 'success');
+        await loadBooks();
+      } catch (e) {
+        showAlert('✗ ' + (e.reason || e.message), 'error');
+      }
+    }
+
+    async function doReturn(id) {
+      try {
+        showAlert('⏳ Confirm return in MetaMask...', 'success');
+        const hash = await returnBook(id);
+        showAlert(`✓ Returned! Tx: ${shortHash(hash)}`, 'success');
+        await loadBooks();
+      } catch (e) {
+        showAlert('✗ ' + (e.reason || e.message), 'error');
+      }
+    }
+
+    async function loadHistory() {
+      const history = await getMyHistory();
+      document.getElementById('historyBody').innerHTML = history.length === 0
+        ? '<tr><td colspan="4" style="text-align:center;color:#999">No borrowing history yet.</td></tr>'
+        : history.map(r => `
+          <tr>
+            <td>Book #${r.bookId}</td>
+            <td>${r.borrowedAt}</td>
+            <td>${r.returnedAt}</td>
+            <td><span class="book-badge ${r.returned ? 'badge-available' : 'badge-unavailable'}" style="position:static">
+              ${r.returned ? 'Returned' : 'Active'}
+            </span></td>
+          </tr>`).join('');
+      document.getElementById('statBorrowed').textContent = history.filter(r => !r.returned).length;
+    }
+
+    function logout() {
+      localStorage.removeItem('walletAddress');
+      window.location.href = 'login.html';
+    }
+
+    window.addEventListener('load', async () => {
+      const { userAddress, isAdminUser } = await initWeb3();
+      document.getElementById('navAddress').textContent = shortAddr(userAddress);
+      if (isAdminUser) {
+        document.getElementById('navAdminLink').style.display = 'inline';
+      }
+      await loadBooks();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login — BlockLib</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="logo">⛓ BlockLib</div>
+    <div><a href="index.html">Home</a></div>
+  </nav>
+  <div class="login-container">
+    <div class="login-box card">
+      <div class="icon">🦊</div>
+      <h2>Connect your Wallet</h2>
+      <p>Use MetaMask to authenticate. Your wallet address is your library card — no signup needed.</p>
+      <button class="btn btn-primary" id="connectBtn" onclick="connectWallet()" style="width:100%;padding:14px;font-size:16px">
+        Connect MetaMask
+      </button>
+      <div class="wallet-address" id="walletDisplay" style="display:none"></div>
+      <div class="status-msg" id="statusMsg"></div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
+  <script>
+    async function connectWallet() {
+      const btn = document.getElementById('connectBtn');
+      const msg = document.getElementById('statusMsg');
+      const display = document.getElementById('walletDisplay');
+
+      if (typeof window.ethereum === 'undefined') {
+        msg.style.color = '#e74c3c';
+        msg.textContent = '⚠ MetaMask not found. Please install the extension.';
+        return;
+      }
+      try {
+        btn.textContent = 'Connecting...';
+        btn.disabled = true;
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        const account = accounts[0];
+        localStorage.setItem('walletAddress', account);
+        display.style.display = 'block';
+        display.textContent = account;
+        msg.style.color = '#2ecc71';
+        msg.textContent = '✓ Connected! Redirecting...';
+        setTimeout(() => { window.location.href = 'dashboard.html'; }, 1200);
+      } catch (e) {
+        btn.textContent = 'Connect MetaMask';
+        btn.disabled = false;
+        msg.style.color = '#e74c3c';
+        msg.textContent = '✗ Connection rejected.';
+      }
+    }
+
+    // Auto-redirect if already connected
+    window.addEventListener('load', async () => {
+      const saved = localStorage.getItem('walletAddress');
+      if (saved && window.ethereum) {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) { window.location.href = 'dashboard.html'; }
+      }
+    });
+  </script>
+</body>
+</html>
